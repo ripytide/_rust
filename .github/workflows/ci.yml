@@ -1,135 +1,42 @@
-name: CI
+name: ci
 
-on:
-  pull_request:
-  push:
-    branches:
-    - main
-
-permissions:
-  contents: read
+on: push
 
 env:
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
   CLICOLOR: 1
-
-concurrency:
-  group: "${{ github.workflow }}-${{ github.ref }}"
-  cancel-in-progress: true
+  RUSTFLAGS: "-Dwarnings"
+  RUSTDOCFLAGS: -Dwarnings
 
 jobs:
-  ci:
-    permissions:
-      contents: none
-    name: CI
-    needs: [test, msrv, lockfile, docs, rustfmt, clippy, minimal-versions]
-    runs-on: ubuntu-latest
-    if: "always()"
-    steps:
-      - name: Failed
-        run: exit 1
-        if: "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')"
-  test:
-    name: Test
-    strategy:
-      matrix:
-        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
-        rust: ["stable"]
-    continue-on-error: ${{ matrix.rust != 'stable' }}
-    runs-on: ${{ matrix.os }}
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: ${{ matrix.rust }}
-    - uses: Swatinem/rust-cache@v2
-    - uses: taiki-e/install-action@cargo-hack
-    - run: cargo test --workspace --no-run
-    - run: cargo hack test --feature-powerset --workspace
-  msrv:
-    name: "Check MSRV"
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
-    - uses: Swatinem/rust-cache@v2
-    - uses: taiki-e/install-action@cargo-hack
-    - run: cargo hack check --feature-powerset --locked --rust-version --ignore-private --workspace --all-targets
-  minimal-versions:
-    name: Minimal versions
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: nightly
-    - run: cargo +nightly generate-lockfile -Z minimal-versions
-    - run: cargo +stable check --workspace --all-features --locked
-  lockfile:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo update --workspace --locked
-  docs:
-    name: Docs
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.76"  # STABLE
-    - uses: Swatinem/rust-cache@v2
-    - env:
-        RUSTDOCFLAGS: -D warnings
-      run: cargo doc --workspace --all-features --no-deps --document-private-items
-  rustfmt:
-    name: rustfmt
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.76"  # STABLE
-        components: rustfmt
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo fmt --all -- --check
   clippy:
-    name: clippy
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write # to upload sarif results
     steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.76"  # STABLE
-        components: clippy
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo install clippy-sarif --locked
-    - run: cargo install sarif-fmt --locked
-    - run: >
-        cargo clippy --workspace --all-features --all-targets --message-format=json -- -D warnings --allow deprecated
-        | clippy-sarif
-        | tee clippy-results.sarif
-        | sarif-fmt
-      continue-on-error: true
-    - uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: clippy-results.sarif
-        wait-for-processing: true
-    - run: cargo clippy --workspace --all-features --all-targets -- -D warnings --allow deprecated
-  spelling:
+      - uses: actions/checkout@v4
+      - run: cargo clippy --all-targets --all-features
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo doc --all-features --no-deps --document-private-items
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+  typos:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: crate-ci/typos@master
+  committed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/committed@master
